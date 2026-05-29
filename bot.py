@@ -122,6 +122,34 @@ class StateDetector:
         y1 = int(region[3] * h)
         return img[y0:y1, x0:x1], (x0, y0)
 
+    def find_lets_go(self, img: np.ndarray) -> tuple[bool, tuple | None]:
+        """Detect the green rank-up 'LET'S GO' button in the bottom-right region."""
+        h, w = img.shape[:2]
+        ox, oy = int(w * 0.5), int(h * 0.7)
+        region = img[oy:h, ox:w]
+
+        # Phase 1: fast green pixel check
+        hsv = cv2.cvtColor(region, cv2.COLOR_BGR2HSV)
+        mask = cv2.inRange(hsv, np.array([40, 100, 100]), np.array([80, 255, 255]))
+        if mask.sum() < 1000:
+            return False, None
+
+        # Phase 2: OCR confirm
+        for term in ("LET'S GO", "LETS GO", "GO"):
+            found, center = self.find_text(region, term)
+            if found and center:
+                return True, (center[0] + ox, center[1] + oy)
+
+        # Fallback: strong green signal → click centroid even if OCR missed the text
+        if mask.sum() > 5000:
+            M = cv2.moments(mask)
+            if M["m00"] > 0:
+                cx = int(M["m10"] / M["m00"]) + ox
+                cy = int(M["m01"] / M["m00"]) + oy
+                return True, (cx, cy)
+
+        return False, None
+
 
 # ---------------------------------------------------------------------------
 # Input controller
@@ -309,6 +337,20 @@ class GameBot:
             time.sleep(0.1)
         self.ctrl.release(self.cfg["move_key"])
 
+    def _dismiss_interstitials(self, timeout: float = 15.0):
+        """Click through rank-up / trophy road cutscenes blocking navigation."""
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            img = self._screenshot()
+            found, center = self.detector.find_lets_go(img)
+            if found and center:
+                self._log("Rank-up screen — clicking LET'S GO")
+                r = self.capture.rect
+                self.ctrl.click_abs(r["left"] + center[0], r["top"] + center[1])
+                time.sleep(1.2)
+            else:
+                break
+
     # --- main loop ----------------------------------------------------------
 
     def run(self):
@@ -346,6 +388,7 @@ class GameBot:
 
                 elif self.state == State.BRAWLBALL_GAME:
                     self._state_brawlball_game()
+                    self._dismiss_interstitials()
                     self.state = State.NAVIGATE_MENU_2
 
                 elif self.state == State.NAVIGATE_MENU_2:
