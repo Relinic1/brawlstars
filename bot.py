@@ -389,6 +389,8 @@ class GameBot:
                 elif self.state == State.BRAWLBALL_GAME:
                     self._state_brawlball_game()
                     self._click_text("PROCEED")
+                    self._click_text("PROCEED")
+                    self._click_text("EXIT")
                     self._dismiss_interstitials()
                     self.state = State.NAVIGATE_MENU_2
 
