@@ -1,3 +1,6 @@
 easyocr
 opencv-python
 Pillow
+mss
+pyautogui
+pygetwindow
