@@ -217,6 +217,7 @@ class InputController:
 # ---------------------------------------------------------------------------
 
 class State(Enum):
+    INITIAL_PLAY      = auto()
     DUELS_GAME_1      = auto()
     WAIT_PLAY_AGAIN   = auto()
     DUELS_GAME_2      = auto()
@@ -237,7 +238,7 @@ class GameBot:
         self.capture = WindowCapture(cfg["window_title"])
         self.detector = StateDetector(confidence=cfg["ocr_confidence"])
         self.ctrl = InputController(self.capture, dry_run)
-        self.state = State.DUELS_GAME_1
+        self.state = State.INITIAL_PLAY
         self.poll = cfg["poll_interval_s"]
         self.autoaim_interval = cfg["autoaim_interval_s"]
 
@@ -274,6 +275,20 @@ class GameBot:
         return True
 
     # --- states -------------------------------------------------------------
+
+    def _state_initial_play(self):
+        self._log("Clicking PLAY to start first Duels game")
+        ax, ay = self.cfg["home_button"]
+        self.ctrl.click_abs(ax, ay)
+        self._log("Waiting for game to load...")
+        deadline = time.time() + 60
+        while time.time() < deadline:
+            img = self._screenshot()
+            found, _ = self.detector.find_text(img, "PLAY")
+            if not found:
+                self._log("Game loaded — starting")
+                return
+            time.sleep(self.poll)
 
     def _state_duels_game(self, game_num: int):
         self._log(f"Duels game {game_num} started — holding {self.cfg['move_key']!r}")
@@ -374,7 +389,11 @@ class GameBot:
         print(f"Starting state: {self.state.name}")
         try:
             while True:
-                if self.state == State.DUELS_GAME_1:
+                if self.state == State.INITIAL_PLAY:
+                    self._state_initial_play()
+                    self.state = State.DUELS_GAME_1
+
+                elif self.state == State.DUELS_GAME_1:
                     self._state_duels_game(1)
                     self.state = State.WAIT_PLAY_AGAIN
 
