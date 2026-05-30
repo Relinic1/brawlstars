@@ -205,6 +205,12 @@ class InputController:
         ay = window_offset_xy[1] + img_center_xy[1]
         self.click_abs(ax, ay)
 
+    def swipe(self, from_x: int, from_y: int, to_x: int, to_y: int, duration: float = 0.5):
+        self._log(f"swipe({from_x},{from_y}) → ({to_x},{to_y})")
+        if not self.dry_run:
+            pyautogui.moveTo(from_x, from_y)
+            pyautogui.dragTo(to_x, to_y, duration=duration, button="left")
+
 
 # ---------------------------------------------------------------------------
 # State machine
@@ -288,19 +294,29 @@ class GameBot:
 
     def _state_navigate_menu(self):
         self._log("Navigating to main menu")
-        rx, ry = self.cfg["home_button"]
-        # Some end screens need an extra tap to dismiss before the home button appears
-        self._click_text("MAIN MENU", timeout=30) or self.ctrl.click_rel(rx, ry)
+        ax, ay = self.cfg["home_button"]
+        self._click_text("MAIN MENU", timeout=30) or self.ctrl.click_abs(ax, ay)
         time.sleep(1.0)
 
     def _state_select_brawler(self, slot_key: str):
-        rx, ry = self.cfg[slot_key]
-        self._log(f"Clicking brawler slot {slot_key} at rel ({rx}, {ry})")
-        self.ctrl.click_rel(rx, ry)
+        ax, ay = self.cfg[slot_key]
+        self._log(f"Clicking brawler slot {slot_key} at abs ({ax}, {ay})")
+        self.ctrl.click_abs(ax, ay)
         time.sleep(0.5)
 
     def _state_navigate_mode(self, mode_text: str):
         self._log(f"Navigating to {mode_text}")
+        # Open the game mode selection screen
+        ox, oy = self.cfg["gamemode_open_button"]
+        self.ctrl.click_abs(ox, oy)
+        time.sleep(0.8)
+        # Duels is off-screen to the right — swipe to bring it into view
+        if mode_text.upper() == "DUELS":
+            fx, fy = self.cfg["gamemode_swipe_from"]
+            tx, ty = self.cfg["gamemode_swipe_to"]
+            self._log("Swiping to reveal Duels")
+            self.ctrl.swipe(fx, fy, tx, ty)
+            time.sleep(0.5)
         if not self._click_text(mode_text, timeout=30):
             raise RuntimeError(f"Could not find '{mode_text}' on screen")
         time.sleep(0.8)

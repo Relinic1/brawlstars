@@ -6,9 +6,11 @@
   "autoaim_interval_s": 0.3,
   "ocr_confidence": 0.4,
 
-  "brawler_slot_duels":     [120, 850],
-  "brawler_slot_brawlball": [250, 850],
-  "home_button":            [50,  40],
+  "home_button":           [-161, 984],
+  "gamemode_open_button":  [-951, 590],
+  "gamemode_swipe_from":   [-182, 561],
+  "gamemode_swipe_to":     [-1723, 562],
 
-  "play_button_region":     [0.25, 0.65, 0.75, 0.95]
+  "brawler_slot_duels":     [-980, 347],
+  "brawler_slot_brawlball": [-1484, 337]
 }
