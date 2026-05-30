@@ -112,11 +112,12 @@ class StateDetector:
         return False, None
 
     def detect_game_end(self, img: np.ndarray) -> bool:
-        for keyword in ("PLAY AGAIN", "VICTORY", "DEFEAT", "TAP TO CONTINUE"):
-            found, _ = self.find_text(img, keyword)
-            if found:
-                return True
-        return False
+        """Fast color-based check for the yellow PLAY AGAIN button in the bottom of screen."""
+        h, w = img.shape[:2]
+        bottom = img[int(h * 0.75):h, :]
+        hsv = cv2.cvtColor(bottom, cv2.COLOR_BGR2HSV)
+        yellow = cv2.inRange(hsv, np.array([20, 120, 120]), np.array([35, 255, 255]))
+        return int(yellow.sum()) > 8000
 
     def detect_in_game(self, img: np.ndarray) -> bool:
         """Heuristic: we're still in-game if none of the end-screen markers appear."""
