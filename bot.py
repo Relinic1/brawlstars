@@ -51,7 +51,15 @@ class WindowCapture:
         if not wins:
             raise RuntimeError(f"Window not found: '{self.title}'")
         w = wins[0]
+        w.activate()
+        time.sleep(0.3)
         self._rect = {"left": w.left, "top": w.top, "width": w.width, "height": w.height}
+
+    def focus(self):
+        wins = gw.getWindowsWithTitle(self.title)
+        if wins:
+            wins[0].activate()
+            time.sleep(0.3)
 
     @property
     def rect(self) -> dict:
@@ -387,6 +395,7 @@ class GameBot:
     def run(self):
         print("Bot started. Move mouse to top-left to abort (pyautogui failsafe).")
         print(f"Starting state: {self.state.name}")
+        self.capture.focus()
         try:
             while True:
                 if self.state == State.INITIAL_PLAY:
