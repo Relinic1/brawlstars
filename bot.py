@@ -123,7 +123,7 @@ class StateDetector:
         if color == "blue":
             return 95 <= h <= 135 and s > 80 and v > 80
         if color == "black":
-            return v < 60
+            return v < 100
         if color == "white":
             return v > 140 and s < 60
         return False
