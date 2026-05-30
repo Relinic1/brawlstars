@@ -112,12 +112,10 @@ class StateDetector:
         return False, None
 
     def detect_game_end(self, img: np.ndarray) -> bool:
-        """Fast color-based check for the yellow PLAY AGAIN button in the bottom of screen."""
-        h, w = img.shape[:2]
-        bottom = img[int(h * 0.75):h, :]
-        hsv = cv2.cvtColor(bottom, cv2.COLOR_BGR2HSV)
-        yellow = cv2.inRange(hsv, np.array([20, 120, 120]), np.array([35, 255, 255]))
-        return int(yellow.sum()) > 8000
+        """Check for the yellow PLAY AGAIN button in the center-bottom of screen only."""
+        # Restrict to center strip (25%-75% width) of bottom 20% — avoids game HUD edges
+        center = self.find_button_center(img, "yellow", region_frac=(0.25, 0.8, 0.75, 1.0))
+        return center is not None
 
     def find_button_center(self, img: np.ndarray, color: str,
                            region_frac: tuple = (0.0, 0.7, 1.0, 1.0)) -> tuple | None:
@@ -281,13 +279,14 @@ class GameBot:
         time.sleep(0.3)
         return True
 
-    def _click_color_button(self, color: str, timeout: float = 30.0) -> bool:
-        """Poll until a colored button appears, then click its center."""
+    def _click_color_button(self, color: str, timeout: float = 30.0,
+                            region_frac: tuple = (0.0, 0.7, 1.0, 1.0)) -> bool:
+        """Poll until a colored button appears in region, then click its center."""
         self._log(f"Waiting for {color} button...")
         deadline = time.time() + timeout
         while time.time() < deadline:
             img = self._screenshot()
-            center = self.detector.find_button_center(img, color)
+            center = self.detector.find_button_center(img, color, region_frac=region_frac)
             if center:
                 r = self.capture.rect
                 self.ctrl.click_abs(r["left"] + center[0], r["top"] + center[1])
@@ -303,7 +302,7 @@ class GameBot:
         self._log("Clicking PLAY — waiting 10s for game to load")
         ax, ay = self.cfg["home_button"]
         self.ctrl.click_abs(ax, ay)
-        time.sleep(10)
+        time.sleep(14)
 
     def _state_duels_game(self, game_num: int):
         self._log(f"Duels game {game_num} started — holding {self.cfg['move_key']!r}")
@@ -318,7 +317,7 @@ class GameBot:
 
     def _state_wait_play_again(self):
         self._click_color_button("yellow")
-        time.sleep(10)
+        time.sleep(14)
 
     def _state_navigate_menu(self):
         self._log("Navigating to main menu")
@@ -437,9 +436,9 @@ class GameBot:
 
                 elif self.state == State.BRAWLBALL_GAME:
                     self._state_brawlball_game()
-                    self._click_color_button("blue")
-                    self._click_color_button("blue")
-                    self._click_color_button("blue")
+                    self._click_color_button("blue", region_frac=(0.5, 0.8, 1.0, 1.0))
+                    self._click_color_button("blue", region_frac=(0.5, 0.8, 1.0, 1.0))
+                    self._click_color_button("blue", region_frac=(0.5, 0.8, 1.0, 1.0))
                     self._dismiss_interstitials()
                     self.state = State.NAVIGATE_MENU_2
 
