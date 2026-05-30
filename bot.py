@@ -358,21 +358,31 @@ class GameBot:
 
     def _state_navigate_mode(self, mode_text: str):
         self._log(f"Navigating to {mode_text}")
-        # Open the game mode selection screen
         ox, oy = self.cfg["gamemode_open_button"]
         self.ctrl.click_abs(ox, oy)
         time.sleep(0.8)
-        # Duels is off-screen to the right — swipe to bring it into view
+
         if mode_text.upper() == "DUELS":
             fx, fy = self.cfg["gamemode_swipe_from"]
             tx, ty = self.cfg["gamemode_swipe_to"]
-            self._log("Swiping to reveal Duels")
-            self.ctrl.swipe(fx, fy, tx, ty)
-            time.sleep(0.5)
-        if not self._click_text(mode_text, timeout=30):
+            duration = self.cfg.get("swipe_duration", 0.8)
+            self._log(f"Swiping to reveal Duels (duration={duration}s)")
+            self.ctrl.swipe(fx, fy, tx, ty, duration=duration)
+            time.sleep(0.3)
+            btn = self.cfg.get("duels_mode_button")
+        else:
+            btn = self.cfg.get("brawlball_mode_button")
+
+        if btn:
+            self.ctrl.click_abs(btn[0], btn[1])
+        elif not self._click_text(mode_text, timeout=30):
             raise RuntimeError(f"Could not find '{mode_text}' on screen")
         time.sleep(0.8)
-        if not self._click_text("PLAY", timeout=15):
+
+        play_btn = self.cfg.get("mode_play_button")
+        if play_btn:
+            self.ctrl.click_abs(play_btn[0], play_btn[1])
+        elif not self._click_text("PLAY", timeout=15):
             raise RuntimeError("Could not find PLAY button")
         time.sleep(1.0)
 
@@ -393,8 +403,11 @@ class GameBot:
         self._log(f"Brawl Ball game — holding W, spamming {self.cfg['autoaim_key']!r}")
         pixel = self.cfg.get("brawlball_ingame_pixel")
         self.ctrl.hold(self.cfg["move_key"])
-        self._log("Waiting 20s before pixel detection starts")
-        time.sleep(20)
+        self._log("20s grace — holding W + spamming autoaim")
+        grace_end = time.time() + 20
+        while time.time() < grace_end:
+            self.ctrl.press(self.cfg["autoaim_key"])
+            time.sleep(self.autoaim_interval)
         last_aim = time.time()
         while True:
             img = self._screenshot()
