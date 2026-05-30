@@ -320,10 +320,10 @@ class GameBot:
     # --- states -------------------------------------------------------------
 
     def _state_initial_play(self):
-        self._log("Clicking PLAY — waiting 14s for game to load")
+        self._log("Clicking PLAY — waiting 20s before pixel detection starts")
         ax, ay = self.cfg["home_button"]
         self.ctrl.click_abs(ax, ay)
-        time.sleep(14)
+        time.sleep(20)
 
     def _state_duels_game(self, game_num: int):
         self._log(f"Duels game {game_num} started — holding {self.cfg['move_key']!r}")
@@ -342,7 +342,7 @@ class GameBot:
     def _state_wait_play_again(self):
         time.sleep(2)
         self._click_color_button("yellow")
-        time.sleep(14)
+        time.sleep(20)
 
     def _state_navigate_menu(self):
         self._log("Navigating to main menu")
@@ -393,6 +393,8 @@ class GameBot:
         self._log(f"Brawl Ball game — holding W, spamming {self.cfg['autoaim_key']!r}")
         pixel = self.cfg.get("brawlball_ingame_pixel")
         self.ctrl.hold(self.cfg["move_key"])
+        self._log("Waiting 20s before pixel detection starts")
+        time.sleep(20)
         last_aim = time.time()
         while True:
             img = self._screenshot()
