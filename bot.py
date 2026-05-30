@@ -320,29 +320,44 @@ class GameBot:
     # --- states -------------------------------------------------------------
 
     def _state_initial_play(self):
-        self._log("Clicking PLAY — waiting 20s before pixel detection starts")
+        self._log("Clicking PLAY — waiting 5s for UI to start transitioning")
         ax, ay = self.cfg["home_button"]
         self.ctrl.click_abs(ax, ay)
-        time.sleep(20)
+        time.sleep(5)
 
     def _state_duels_game(self, game_num: int):
         self._log(f"Duels game {game_num} started — holding {self.cfg['move_key']!r}")
         pixel = self.cfg.get("duels_ingame_pixel")
         self.ctrl.hold(self.cfg["move_key"])
-        while True:
-            img = self._screenshot()
-            ended = (not self.detector.pixel_matches(img, pixel[0], pixel[1], pixel[2])
-                     if pixel else self.detector.detect_game_end(img))
-            if ended:
-                self._log("Game ended")
-                break
-            time.sleep(self.poll)
+        if pixel:
+            px, py, color = pixel[0], pixel[1], pixel[2]
+            self._log("Waiting for in-game pixel to confirm game started...")
+            deadline = time.time() + 90
+            while time.time() < deadline:
+                img = self._screenshot()
+                if self.detector.pixel_matches(img, px, py, color):
+                    self._log("In-game confirmed — watching for game end")
+                    break
+                time.sleep(0.5)
+            while True:
+                img = self._screenshot()
+                if not self.detector.pixel_matches(img, px, py, color):
+                    self._log("Game ended")
+                    break
+                time.sleep(self.poll)
+        else:
+            while True:
+                img = self._screenshot()
+                if self.detector.detect_game_end(img):
+                    self._log("Game ended")
+                    break
+                time.sleep(self.poll)
         self.ctrl.release(self.cfg["move_key"])
 
     def _state_wait_play_again(self):
         time.sleep(2)
         self._click_color_button("yellow")
-        time.sleep(20)
+        time.sleep(5)
 
     def _state_navigate_menu(self):
         self._log("Navigating to main menu")
@@ -406,24 +421,41 @@ class GameBot:
         self._log(f"Brawl Ball game — holding W, spamming {self.cfg['autoaim_key']!r}")
         pixel = self.cfg.get("brawlball_ingame_pixel")
         self.ctrl.hold(self.cfg["move_key"])
-        self._log("20s grace — holding W + spamming autoaim")
-        grace_end = time.time() + 20
-        while time.time() < grace_end:
-            self.ctrl.press(self.cfg["autoaim_key"])
-            time.sleep(self.autoaim_interval)
         last_aim = time.time()
-        while True:
-            img = self._screenshot()
-            ended = (not self.detector.pixel_matches(img, pixel[0], pixel[1], pixel[2])
-                     if pixel else self.detector.detect_game_end(img))
-            if ended:
-                self._log("Brawl Ball game ended")
-                break
+
+        def _spam_aim():
+            nonlocal last_aim
             now = time.time()
             if now - last_aim >= self.autoaim_interval:
                 self.ctrl.press(self.cfg["autoaim_key"])
                 last_aim = now
-            time.sleep(0.1)
+
+        if pixel:
+            px, py, color = pixel[0], pixel[1], pixel[2]
+            self._log("Waiting for in-game pixel to confirm game started...")
+            deadline = time.time() + 90
+            while time.time() < deadline:
+                img = self._screenshot()
+                if self.detector.pixel_matches(img, px, py, color):
+                    self._log("In-game confirmed — watching for game end")
+                    break
+                _spam_aim()
+                time.sleep(0.1)
+            while True:
+                img = self._screenshot()
+                if not self.detector.pixel_matches(img, px, py, color):
+                    self._log("Brawl Ball game ended")
+                    break
+                _spam_aim()
+                time.sleep(0.1)
+        else:
+            while True:
+                img = self._screenshot()
+                if self.detector.detect_game_end(img):
+                    self._log("Brawl Ball game ended")
+                    break
+                _spam_aim()
+                time.sleep(0.1)
         self.ctrl.release(self.cfg["move_key"])
 
     def _dismiss_interstitials(self, timeout: float = 15.0):
