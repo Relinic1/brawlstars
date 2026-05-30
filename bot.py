@@ -112,10 +112,16 @@ class StateDetector:
         return False, None
 
     def detect_game_end(self, img: np.ndarray) -> bool:
-        """Check for the yellow PLAY AGAIN button in the center-bottom of screen only."""
-        # Restrict to center strip (25%-75% width) of bottom 20% — avoids game HUD edges
-        center = self.find_button_center(img, "yellow", region_frac=(0.25, 0.8, 0.75, 1.0))
-        return center is not None
+        """Check for a large vivid-yellow PLAY AGAIN button in the center-bottom strip."""
+        h, w = img.shape[:2]
+        x0, y0 = int(0.25 * w), int(0.8 * h)
+        region = img[y0:h, x0:int(0.75 * w)]
+        hsv = cv2.cvtColor(region, cv2.COLOR_BGR2HSV)
+        # High saturation/value to exclude dull yellows from in-game UI
+        mask = cv2.inRange(hsv, np.array([20, 180, 180]), np.array([35, 255, 255]))
+        region_size = region.shape[0] * region.shape[1]
+        # Require at least 8% of the region to be vivid yellow (a real button, not a small icon)
+        return (mask.sum() / 255) / region_size > 0.08
 
     def find_button_center(self, img: np.ndarray, color: str,
                            region_frac: tuple = (0.0, 0.7, 1.0, 1.0)) -> tuple | None:
