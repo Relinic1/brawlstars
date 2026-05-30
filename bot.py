@@ -119,9 +119,28 @@ class StateDetector:
         yellow = cv2.inRange(hsv, np.array([20, 120, 120]), np.array([35, 255, 255]))
         return int(yellow.sum()) > 8000
 
-    def detect_in_game(self, img: np.ndarray) -> bool:
-        """Heuristic: we're still in-game if none of the end-screen markers appear."""
-        return not self.detect_game_end(img)
+    def find_button_center(self, img: np.ndarray, color: str,
+                           region_frac: tuple = (0.0, 0.7, 1.0, 1.0)) -> tuple | None:
+        """Return pixel center of a colored button within a screen region fraction."""
+        _ranges = {
+            "yellow": ([20, 120, 120], [35, 255, 255]),
+            "blue":   ([100, 120, 120], [130, 255, 255]),
+            "green":  ([40, 100, 100], [80, 255, 255]),
+        }
+        if color not in _ranges:
+            return None
+        h, w = img.shape[:2]
+        x0, y0 = int(region_frac[0] * w), int(region_frac[1] * h)
+        x1, y1 = int(region_frac[2] * w), int(region_frac[3] * h)
+        crop = img[y0:y1, x0:x1]
+        lo, hi = np.array(_ranges[color][0]), np.array(_ranges[color][1])
+        mask = cv2.inRange(cv2.cvtColor(crop, cv2.COLOR_BGR2HSV), lo, hi)
+        if mask.sum() < 3000:
+            return None
+        M = cv2.moments(mask)
+        if M["m00"] > 0:
+            return (int(M["m10"] / M["m00"]) + x0, int(M["m01"] / M["m00"]) + y0)
+        return None
 
     def crop_region(self, img: np.ndarray, region: list[float]) -> np.ndarray:
         h, w = img.shape[:2]
@@ -132,31 +151,10 @@ class StateDetector:
         return img[y0:y1, x0:x1], (x0, y0)
 
     def find_lets_go(self, img: np.ndarray) -> tuple[bool, tuple | None]:
-        """Detect the green rank-up 'LET'S GO' button in the bottom-right region."""
-        h, w = img.shape[:2]
-        ox, oy = int(w * 0.5), int(h * 0.7)
-        region = img[oy:h, ox:w]
-
-        # Phase 1: fast green pixel check
-        hsv = cv2.cvtColor(region, cv2.COLOR_BGR2HSV)
-        mask = cv2.inRange(hsv, np.array([40, 100, 100]), np.array([80, 255, 255]))
-        if mask.sum() < 1000:
-            return False, None
-
-        # Phase 2: OCR confirm
-        for term in ("LET'S GO", "LETS GO", "GO"):
-            found, center = self.find_text(region, term)
-            if found and center:
-                return True, (center[0] + ox, center[1] + oy)
-
-        # Fallback: strong green signal → click centroid even if OCR missed the text
-        if mask.sum() > 5000:
-            M = cv2.moments(mask)
-            if M["m00"] > 0:
-                cx = int(M["m10"] / M["m00"]) + ox
-                cy = int(M["m01"] / M["m00"]) + oy
-                return True, (cx, cy)
-
+        """Detect the green rank-up LET'S GO button in the bottom-right region."""
+        center = self.find_button_center(img, "green", region_frac=(0.5, 0.7, 1.0, 1.0))
+        if center:
+            return True, center
         return False, None
 
 
@@ -283,6 +281,22 @@ class GameBot:
         time.sleep(0.3)
         return True
 
+    def _click_color_button(self, color: str, timeout: float = 30.0) -> bool:
+        """Poll until a colored button appears, then click its center."""
+        self._log(f"Waiting for {color} button...")
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            img = self._screenshot()
+            center = self.detector.find_button_center(img, color)
+            if center:
+                r = self.capture.rect
+                self.ctrl.click_abs(r["left"] + center[0], r["top"] + center[1])
+                time.sleep(0.4)
+                return True
+            time.sleep(0.2)
+        self._log(f"Timeout waiting for {color} button")
+        return False
+
     # --- states -------------------------------------------------------------
 
     def _state_initial_play(self):
@@ -303,9 +317,7 @@ class GameBot:
         self.ctrl.release(self.cfg["move_key"])
 
     def _state_wait_play_again(self):
-        self._log("Waiting for PLAY AGAIN...")
-        if not self._click_text("PLAY AGAIN"):
-            raise RuntimeError("PLAY AGAIN button not found in time")
+        self._click_color_button("yellow")
         time.sleep(10)
 
     def _state_navigate_menu(self):
@@ -425,8 +437,8 @@ class GameBot:
 
                 elif self.state == State.BRAWLBALL_GAME:
                     self._state_brawlball_game()
-                    self._click_text("PROCEED")
-                    self._click_text("PROCEED")
+                    self._click_color_button("blue")
+                    self._click_color_button("blue")
                     self._click_text("EXIT")
                     self._dismiss_interstitials()
                     self.state = State.NAVIGATE_MENU_2
