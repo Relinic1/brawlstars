@@ -112,12 +112,21 @@ class StateDetector:
         return False, None
 
     def pixel_is_blue(self, img: np.ndarray, px: int, py: int) -> bool:
-        """Return True if the pixel at (px, py) in the window screenshot is blue."""
+        return self.pixel_matches(img, px, py, "blue")
+
+    def pixel_matches(self, img: np.ndarray, px: int, py: int, color: str) -> bool:
+        """Return True if pixel at (px, py) matches the given color name."""
         if py < 0 or py >= img.shape[0] or px < 0 or px >= img.shape[1]:
             return False
         hsv = cv2.cvtColor(img[py:py+1, px:px+1], cv2.COLOR_BGR2HSV)[0, 0]
         h, s, v = int(hsv[0]), int(hsv[1]), int(hsv[2])
-        return 95 <= h <= 135 and s > 80 and v > 80
+        if color == "blue":
+            return 95 <= h <= 135 and s > 80 and v > 80
+        if color == "black":
+            return v < 60
+        if color == "white":
+            return v > 200 and s < 50
+        return False
 
     def detect_game_end(self, img: np.ndarray) -> bool:
         """Fallback yellow-button detection used only when pixel coords are not configured."""
@@ -322,7 +331,7 @@ class GameBot:
         self.ctrl.hold(self.cfg["move_key"])
         while True:
             img = self._screenshot()
-            ended = (not self.detector.pixel_is_blue(img, pixel[0], pixel[1])
+            ended = (not self.detector.pixel_matches(img, pixel[0], pixel[1], pixel[2])
                      if pixel else self.detector.detect_game_end(img))
             if ended:
                 self._log("Game ended")
@@ -387,7 +396,7 @@ class GameBot:
         last_aim = time.time()
         while True:
             img = self._screenshot()
-            ended = (not self.detector.pixel_is_blue(img, pixel[0], pixel[1])
+            ended = (not self.detector.pixel_matches(img, pixel[0], pixel[1], pixel[2])
                      if pixel else self.detector.detect_game_end(img))
             if ended:
                 self._log("Brawl Ball game ended")
