@@ -285,22 +285,10 @@ class GameBot:
     # --- states -------------------------------------------------------------
 
     def _state_initial_play(self):
-        self._log("Clicking PLAY to start first Duels game")
+        self._log("Clicking PLAY — waiting 10s for game to load")
         ax, ay = self.cfg["home_button"]
         self.ctrl.click_abs(ax, ay)
-        time.sleep(3)  # wait for queue/loading screen to appear
-        self._log("Waiting to leave main menu...")
-        deadline = time.time() + 45
-        while time.time() < deadline:
-            img = self._screenshot()
-            found, _ = self.detector.find_text(img, "PLAY")
-            if not found:
-                self._log("Left menu — waiting for game to load...")
-                time.sleep(8)
-                self._log("Starting")
-                return
-            time.sleep(self.poll)
-        self._log("Timed out waiting for menu to clear — starting anyway")
+        time.sleep(10)
 
     def _state_duels_game(self, game_num: int):
         self._log(f"Duels game {game_num} started — holding {self.cfg['move_key']!r}")
@@ -317,7 +305,7 @@ class GameBot:
         self._log("Waiting for PLAY AGAIN...")
         if not self._click_text("PLAY AGAIN"):
             raise RuntimeError("PLAY AGAIN button not found in time")
-        time.sleep(1.5)  # wait for next game to load
+        time.sleep(10)
 
     def _state_navigate_menu(self):
         self._log("Navigating to main menu")
