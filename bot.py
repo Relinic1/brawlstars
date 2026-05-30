@@ -355,6 +355,9 @@ class GameBot:
         self._log(f"Clicking brawler slot {slot_key} at abs ({ax}, {ay})")
         self.ctrl.click_abs(ax, ay)
         time.sleep(0.5)
+        sx, sy = self.cfg["brawler_select_button"]
+        self.ctrl.click_abs(sx, sy)
+        time.sleep(0.5)
 
     def _state_navigate_mode(self, mode_text: str):
         self._log(f"Navigating to {mode_text}")
