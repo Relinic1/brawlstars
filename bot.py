@@ -299,7 +299,7 @@ class GameBot:
     # --- states -------------------------------------------------------------
 
     def _state_initial_play(self):
-        self._log("Clicking PLAY — waiting 10s for game to load")
+        self._log("Clicking PLAY — waiting 14s for game to load")
         ax, ay = self.cfg["home_button"]
         self.ctrl.click_abs(ax, ay)
         time.sleep(14)
