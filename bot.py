@@ -111,16 +111,22 @@ class StateDetector:
                 return True, center
         return False, None
 
+    def pixel_is_blue(self, img: np.ndarray, px: int, py: int) -> bool:
+        """Return True if the pixel at (px, py) in the window screenshot is blue."""
+        if py < 0 or py >= img.shape[0] or px < 0 or px >= img.shape[1]:
+            return False
+        hsv = cv2.cvtColor(img[py:py+1, px:px+1], cv2.COLOR_BGR2HSV)[0, 0]
+        h, s, v = int(hsv[0]), int(hsv[1]), int(hsv[2])
+        return 95 <= h <= 135 and s > 80 and v > 80
+
     def detect_game_end(self, img: np.ndarray) -> bool:
-        """Check for a large vivid-yellow PLAY AGAIN button in the center-bottom strip."""
+        """Fallback yellow-button detection used only when pixel coords are not configured."""
         h, w = img.shape[:2]
         x0, y0 = int(0.25 * w), int(0.8 * h)
         region = img[y0:h, x0:int(0.75 * w)]
         hsv = cv2.cvtColor(region, cv2.COLOR_BGR2HSV)
-        # High saturation/value to exclude dull yellows from in-game UI
         mask = cv2.inRange(hsv, np.array([20, 180, 180]), np.array([35, 255, 255]))
         region_size = region.shape[0] * region.shape[1]
-        # Require at least 8% of the region to be vivid yellow (a real button, not a small icon)
         return (mask.sum() / 255) / region_size > 0.08
 
     def find_button_center(self, img: np.ndarray, color: str,
@@ -312,16 +318,20 @@ class GameBot:
 
     def _state_duels_game(self, game_num: int):
         self._log(f"Duels game {game_num} started — holding {self.cfg['move_key']!r}")
+        pixel = self.cfg.get("duels_ingame_pixel")
         self.ctrl.hold(self.cfg["move_key"])
         while True:
             img = self._screenshot()
-            if self.detector.detect_game_end(img):
-                self._log("Game ended detected")
+            ended = (not self.detector.pixel_is_blue(img, pixel[0], pixel[1])
+                     if pixel else self.detector.detect_game_end(img))
+            if ended:
+                self._log("Game ended")
                 break
             time.sleep(self.poll)
         self.ctrl.release(self.cfg["move_key"])
 
     def _state_wait_play_again(self):
+        time.sleep(2)
         self._click_color_button("yellow")
         time.sleep(14)
 
@@ -372,11 +382,14 @@ class GameBot:
 
     def _state_brawlball_game(self):
         self._log(f"Brawl Ball game — holding W, spamming {self.cfg['autoaim_key']!r}")
+        pixel = self.cfg.get("brawlball_ingame_pixel")
         self.ctrl.hold(self.cfg["move_key"])
         last_aim = time.time()
         while True:
             img = self._screenshot()
-            if self.detector.detect_game_end(img):
+            ended = (not self.detector.pixel_is_blue(img, pixel[0], pixel[1])
+                     if pixel else self.detector.detect_game_end(img))
+            if ended:
                 self._log("Brawl Ball game ended")
                 break
             now = time.time()
@@ -442,9 +455,9 @@ class GameBot:
 
                 elif self.state == State.BRAWLBALL_GAME:
                     self._state_brawlball_game()
-                    self._click_color_button("blue", region_frac=(0.5, 0.8, 1.0, 1.0))
-                    self._click_color_button("blue", region_frac=(0.5, 0.8, 1.0, 1.0))
-                    self._click_color_button("blue", region_frac=(0.5, 0.8, 1.0, 1.0))
+                    for _ in range(3):
+                        self._click_color_button("blue", region_frac=(0.5, 0.8, 1.0, 1.0))
+                        time.sleep(1.0)
                     self._dismiss_interstitials()
                     self.state = State.NAVIGATE_MENU_2
 

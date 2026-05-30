@@ -12,5 +12,8 @@
   "gamemode_swipe_to":     [-1723, 562],
 
   "brawler_slot_duels":     [-980, 347],
-  "brawler_slot_brawlball": [-1484, 337]
+  "brawler_slot_brawlball": [-1484, 337],
+
+  "duels_ingame_pixel":     null,
+  "brawlball_ingame_pixel": null
 }
