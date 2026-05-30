@@ -330,7 +330,8 @@ class GameBot:
         pixel = self.cfg.get("duels_ingame_pixel")
         self.ctrl.hold(self.cfg["move_key"])
         if pixel:
-            px, py, color = pixel[0], pixel[1], pixel[2]
+            r = self.capture.rect
+            px, py, color = pixel[0] - r["left"], pixel[1] - r["top"], pixel[2]
             self._log("Waiting for in-game pixel to confirm game started...")
             deadline = time.time() + 90
             while time.time() < deadline:
@@ -431,7 +432,8 @@ class GameBot:
                 last_aim = now
 
         if pixel:
-            px, py, color = pixel[0], pixel[1], pixel[2]
+            r = self.capture.rect
+            px, py, color = pixel[0] - r["left"], pixel[1] - r["top"], pixel[2]
             self._log("Waiting for in-game pixel to confirm game started...")
             deadline = time.time() + 90
             while time.time() < deadline:
