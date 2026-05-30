@@ -7,12 +7,12 @@
   "ocr_confidence": 0.4,
 
   "home_button":           [-161, 984],
-  "gamemode_open_button":  [-951, 590],
+  "gamemode_open_button":  [-910, 991],
   "gamemode_swipe_from":   [-182, 561],
   "gamemode_swipe_to":     [-1723, 562],
   "swipe_duration":        0.4,
-  "duels_mode_button":     null,
-  "brawlball_mode_button": null,
+  "duels_mode_button":     [-135, 782],
+  "brawlball_mode_button": [-1595, 421],
   "mode_play_button":      null,
 
   "brawler_slot_duels":     [-980, 347],
