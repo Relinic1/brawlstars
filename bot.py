@@ -125,7 +125,7 @@ class StateDetector:
         if color == "black":
             return v < 60
         if color == "white":
-            return v > 200 and s < 50
+            return v > 140 and s < 60
         return False
 
     def detect_game_end(self, img: np.ndarray) -> bool:

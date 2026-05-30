@@ -15,5 +15,5 @@
   "brawler_slot_brawlball": [-1484, 337],
 
   "duels_ingame_pixel":     [-1543, 30, "black"],
-  "brawlball_ingame_pixel": null
+  "brawlball_ingame_pixel": [-1861, 60, "white"]
 }
