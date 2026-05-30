@@ -439,7 +439,7 @@ class GameBot:
                     self._state_brawlball_game()
                     self._click_color_button("blue")
                     self._click_color_button("blue")
-                    self._click_text("EXIT")
+                    self._click_color_button("blue")
                     self._dismiss_interstitials()
                     self.state = State.NAVIGATE_MENU_2
 
