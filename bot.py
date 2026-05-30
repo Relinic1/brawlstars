@@ -288,15 +288,19 @@ class GameBot:
         self._log("Clicking PLAY to start first Duels game")
         ax, ay = self.cfg["home_button"]
         self.ctrl.click_abs(ax, ay)
-        self._log("Waiting for game to load...")
-        deadline = time.time() + 60
+        time.sleep(3)  # wait for queue/loading screen to appear
+        self._log("Waiting to leave main menu...")
+        deadline = time.time() + 45
         while time.time() < deadline:
             img = self._screenshot()
             found, _ = self.detector.find_text(img, "PLAY")
             if not found:
-                self._log("Game loaded — starting")
+                self._log("Left menu — waiting for game to load...")
+                time.sleep(8)
+                self._log("Starting")
                 return
             time.sleep(self.poll)
+        self._log("Timed out waiting for menu to clear — starting anyway")
 
     def _state_duels_game(self, game_num: int):
         self._log(f"Duels game {game_num} started — holding {self.cfg['move_key']!r}")
