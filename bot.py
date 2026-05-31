@@ -46,7 +46,7 @@ def _window_monitor_origin(hwnd) -> tuple[int, int, int, int]:
     hmon = ctypes.windll.user32.MonitorFromWindow(hwnd, 2)  # MONITOR_DEFAULTTONEAREST
     mi = _MonitorInfo()
     mi.cbSize = ctypes.sizeof(_MonitorInfo)
-    ctypes.windll.user32.GetMonitorInfo(hmon, ctypes.byref(mi))
+    ctypes.windll.user32.GetMonitorInfoW(hmon, ctypes.byref(mi))
     r = mi.rcMonitor
     return r.left, r.top, r.right - r.left, r.bottom - r.top
 
