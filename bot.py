@@ -68,9 +68,32 @@ class WindowCapture:
         return self._rect
 
     def capture(self) -> np.ndarray:
-        with mss.mss() as sct:
-            raw = sct.grab(self.rect)
-        img = np.array(raw)
+        import win32gui
+        import win32ui
+        from ctypes import windll
+
+        hwnd = win32gui.FindWindow(None, self.title)
+        if not hwnd:
+            with mss.mss() as sct:
+                raw = sct.grab(self.rect)
+            return cv2.cvtColor(np.array(raw), cv2.COLOR_BGRA2BGR)
+
+        r = self.rect
+        w, h = r["width"], r["height"]
+        hwnd_dc = win32gui.GetWindowDC(hwnd)
+        mfc_dc = win32ui.CreateDCFromHandle(hwnd_dc)
+        save_dc = mfc_dc.CreateCompatibleDC()
+        bmp = win32ui.CreateBitmap()
+        bmp.CreateCompatibleBitmap(mfc_dc, w, h)
+        save_dc.SelectObject(bmp)
+        windll.user32.PrintWindow(hwnd, save_dc.GetSafeHdc(), 2)  # PW_RENDERFULLCONTENT
+        info = bmp.GetInfo()
+        raw = bmp.GetBitmapBits(True)
+        img = np.frombuffer(raw, dtype=np.uint8).reshape(info["bmHeight"], info["bmWidth"], 4).copy()
+        win32gui.DeleteObject(bmp.GetHandle())
+        save_dc.DeleteDC()
+        mfc_dc.DeleteDC()
+        win32gui.ReleaseDC(hwnd, hwnd_dc)
         return cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
 
     def rel_to_abs(self, rx: int, ry: int) -> tuple[int, int]:
