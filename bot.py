@@ -553,7 +553,40 @@ def main():
     parser = argparse.ArgumentParser(description="Brawl Stars automation bot")
     parser.add_argument("--dry-run", action="store_true", help="Log actions without sending input")
     parser.add_argument("--config", default=str(CONFIG_PATH), help="Path to config.json")
+    parser.add_argument("--debug-pixel", action="store_true",
+                        help="Print live pixel values at configured detection coords")
     args = parser.parse_args()
+
+    with open(args.config) as f:
+        cfg = json.load(f)
+
+    if args.debug_pixel:
+        cap = WindowCapture(cfg["window_title"])
+        cap.focus()
+        print("Reading pixels every 0.5s — Ctrl+C to stop\n")
+        while True:
+            try:
+                img = cap.capture()
+                r = cap.rect
+                for key in ("duels_ingame_pixel", "brawlball_ingame_pixel"):
+                    p = cfg.get(key)
+                    if not p:
+                        continue
+                    px, py = p[0] - r["left"], p[1] - r["top"]
+                    if 0 <= py < img.shape[0] and 0 <= px < img.shape[1]:
+                        hsv = cv2.cvtColor(img[py:py+1, px:px+1],
+                                           cv2.COLOR_BGR2HSV)[0, 0]
+                        bgr = img[py, px]
+                        expected = p[2]
+                        print(f"{key}: BGR={tuple(bgr)}  HSV={tuple(hsv)}  "
+                              f"expecting={expected!r}")
+                    else:
+                        print(f"{key}: pixel out of bounds (px={px}, py={py})")
+                print()
+                time.sleep(0.5)
+            except KeyboardInterrupt:
+                break
+        return
 
     with open(args.config) as f:
         cfg = json.load(f)
