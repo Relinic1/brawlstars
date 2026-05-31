@@ -22,8 +22,17 @@ import pygetwindow as gw
 
 try:
     import mss
+    import dxcam
 except ImportError:
     sys.exit("Install dependencies first: pip install -r requirements.txt")
+
+_dxcam_cameras: dict[int, object] = {}
+
+
+def _get_dxcam_camera(output_idx: int):
+    if output_idx not in _dxcam_cameras:
+        _dxcam_cameras[output_idx] = dxcam.create(output_idx=output_idx, output_color="BGR")
+    return _dxcam_cameras[output_idx]
 
 from ocr import _get_reader
 
@@ -45,6 +54,7 @@ class WindowCapture:
     def __init__(self, title: str):
         self.title = title
         self._rect = None
+        self._mon_info = None  # (output_idx, mon_left, mon_top)
 
     def _find(self):
         wins = gw.getWindowsWithTitle(self.title)
@@ -67,34 +77,37 @@ class WindowCapture:
             self._find()
         return self._rect
 
-    def capture(self) -> np.ndarray:
-        import win32gui
-        import win32ui
-        from ctypes import windll
-
-        hwnd = win32gui.FindWindow(None, self.title)
-        if not hwnd:
+    def _monitor_info(self) -> tuple[int, int, int]:
+        if self._mon_info is None:
+            r = self.rect
+            cx = r["left"] + r["width"] // 2
+            cy = r["top"] + r["height"] // 2
             with mss.mss() as sct:
-                raw = sct.grab(self.rect)
-            return cv2.cvtColor(np.array(raw), cv2.COLOR_BGRA2BGR)
+                for i, mon in enumerate(sct.monitors[1:]):
+                    if (mon["left"] <= cx < mon["left"] + mon["width"] and
+                            mon["top"] <= cy < mon["top"] + mon["height"]):
+                        self._mon_info = (i, mon["left"], mon["top"])
+                        break
+                else:
+                    self._mon_info = (0, 0, 0)
+        return self._mon_info
 
+    def capture(self) -> np.ndarray:
         r = self.rect
-        w, h = r["width"], r["height"]
-        hwnd_dc = win32gui.GetWindowDC(hwnd)
-        mfc_dc = win32ui.CreateDCFromHandle(hwnd_dc)
-        save_dc = mfc_dc.CreateCompatibleDC()
-        bmp = win32ui.CreateBitmap()
-        bmp.CreateCompatibleBitmap(mfc_dc, w, h)
-        save_dc.SelectObject(bmp)
-        windll.user32.PrintWindow(hwnd, save_dc.GetSafeHdc(), 2)  # PW_RENDERFULLCONTENT
-        info = bmp.GetInfo()
-        raw = bmp.GetBitmapBits(True)
-        img = np.frombuffer(raw, dtype=np.uint8).reshape(info["bmHeight"], info["bmWidth"], 4).copy()
-        win32gui.DeleteObject(bmp.GetHandle())
-        save_dc.DeleteDC()
-        mfc_dc.DeleteDC()
-        win32gui.ReleaseDC(hwnd, hwnd_dc)
-        return cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
+        output_idx, mon_left, mon_top = self._monitor_info()
+        rl = r["left"] - mon_left
+        rt = r["top"] - mon_top
+        region = (rl, rt, rl + r["width"], rt + r["height"])
+        cam = _get_dxcam_camera(output_idx)
+        for _ in range(5):
+            frame = cam.grab(region=region)
+            if frame is not None:
+                return frame
+            time.sleep(0.016)
+        # fallback to mss
+        with mss.mss() as sct:
+            raw = sct.grab(r)
+        return cv2.cvtColor(np.array(raw), cv2.COLOR_BGRA2BGR)
 
     def rel_to_abs(self, rx: int, ry: int) -> tuple[int, int]:
         r = self.rect
