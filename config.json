@@ -9,8 +9,8 @@
 
   "home_button":           [-243, 951],
   "gamemode_open_button":  [-910, 952],
-  "gamemode_swipe_from":   [-250, 540],
-  "gamemode_swipe_to":     [-1670, 540],
+  "gamemode_swipe_from":   [-605, 540],
+  "gamemode_swipe_to":     [-1315, 540],
   "swipe_duration":        1.0,
   "duels_mode_button":     [-135, 782],
   "brawlball_mode_button": [-1595, 421],
