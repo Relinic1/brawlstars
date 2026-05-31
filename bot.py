@@ -88,8 +88,9 @@ def load_config() -> dict:
 # ---------------------------------------------------------------------------
 
 class WindowCapture:
-    def __init__(self, title: str):
+    def __init__(self, title: str, dxcam_output_idx: int | None = None):
         self.title = title
+        self._dxcam_output_idx = dxcam_output_idx
         self._rect = None
         self._mon_left = 0
         self._mon_top = 0
@@ -106,7 +107,13 @@ class WindowCapture:
         ml, mt, mw, mh = _window_monitor_origin(w._hWnd)
         self._mon_left = ml
         self._mon_top = mt
-        self._camera = _open_dxcam_for_monitor(mw, mh)
+        if self._dxcam_output_idx is not None:
+            print(f"  [capture] using configured dxcam output {self._dxcam_output_idx}")
+            cam = dxcam.create(output_idx=self._dxcam_output_idx, output_color="BGR")
+            cam.start(target_fps=30)
+            self._camera = cam
+        else:
+            self._camera = _open_dxcam_for_monitor(mw, mh)
 
     def focus(self):
         wins = gw.getWindowsWithTitle(self.title)
@@ -322,7 +329,7 @@ class GameBot:
     def __init__(self, cfg: dict, dry_run: bool = False):
         self.cfg = cfg
         self.dry_run = dry_run
-        self.capture = WindowCapture(cfg["window_title"])
+        self.capture = WindowCapture(cfg["window_title"], dxcam_output_idx=cfg.get("dxcam_output_idx"))
         self.detector = StateDetector(confidence=cfg["ocr_confidence"])
         self.ctrl = InputController(self.capture, dry_run)
         self.state = State.INITIAL_PLAY
@@ -623,7 +630,7 @@ def main():
         cfg = json.load(f)
 
     if args.debug_pixel:
-        cap = WindowCapture(cfg["window_title"])
+        cap = WindowCapture(cfg["window_title"], dxcam_output_idx=cfg.get("dxcam_output_idx"))
         cap.focus()
         print("Reading pixels every 0.5s — Ctrl+C to stop\n")
         while True:

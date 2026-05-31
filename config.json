@@ -1,5 +1,6 @@
 {
   "window_title": "BlueStacks App Player",
+  "dxcam_output_idx": 1,
   "move_key": "w",
   "autoaim_key": "shift",
   "poll_interval_s": 0.5,
