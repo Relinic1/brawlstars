@@ -9,9 +9,11 @@ Failsafe: move the mouse to the top-left corner of the screen to abort.
 """
 
 import argparse
+import ctypes
 import json
 import sys
 import time
+from ctypes import wintypes
 from enum import Enum, auto
 from pathlib import Path
 
@@ -22,10 +24,54 @@ import pygetwindow as gw
 
 try:
     import mss
+    import dxcam
+    import win32gui
 except ImportError:
     sys.exit("Install dependencies first: pip install -r requirements.txt")
 
 from ocr import _get_reader
+
+
+class _MonitorInfo(ctypes.Structure):
+    _fields_ = [
+        ("cbSize", ctypes.c_uint32),
+        ("rcMonitor", wintypes.RECT),
+        ("rcWork", wintypes.RECT),
+        ("dwFlags", ctypes.c_uint32),
+    ]
+
+
+def _window_monitor_origin(hwnd) -> tuple[int, int, int, int]:
+    """Return (left, top, width, height) of the monitor containing hwnd."""
+    hmon = ctypes.windll.user32.MonitorFromWindow(hwnd, 2)  # MONITOR_DEFAULTTONEAREST
+    mi = _MonitorInfo()
+    mi.cbSize = ctypes.sizeof(_MonitorInfo)
+    ctypes.windll.user32.GetMonitorInfo(hmon, ctypes.byref(mi))
+    r = mi.rcMonitor
+    return r.left, r.top, r.right - r.left, r.bottom - r.top
+
+
+def _open_dxcam_for_monitor(mon_w: int, mon_h: int):
+    """Return a started dxcam camera whose full frame matches (mon_w, mon_h)."""
+    for idx in range(4):
+        try:
+            cam = dxcam.create(output_idx=idx, output_color="BGR")
+            cam.start(target_fps=30)
+            time.sleep(0.15)
+            frame = cam.get_latest_frame()
+            if frame is not None:
+                fh, fw = frame.shape[:2]
+                if fw == mon_w and fh == mon_h:
+                    print(f"  [capture] dxcam output {idx} matched ({mon_w}x{mon_h})")
+                    return cam
+            cam.stop()
+        except Exception:
+            pass
+    # Fallback: try index 1 unconditionally
+    print("  [capture] dxcam auto-detect failed, defaulting to output 1")
+    cam = dxcam.create(output_idx=1, output_color="BGR")
+    cam.start(target_fps=30)
+    return cam
 
 pyautogui.FAILSAFE = True
 
@@ -45,7 +91,9 @@ class WindowCapture:
     def __init__(self, title: str):
         self.title = title
         self._rect = None
-        self._hwnd = None
+        self._mon_left = 0
+        self._mon_top = 0
+        self._camera = None
 
     def _find(self):
         wins = gw.getWindowsWithTitle(self.title)
@@ -55,12 +103,23 @@ class WindowCapture:
         w.activate()
         time.sleep(0.3)
         self._rect = {"left": w.left, "top": w.top, "width": w.width, "height": w.height}
+        ml, mt, mw, mh = _window_monitor_origin(w._hWnd)
+        self._mon_left = ml
+        self._mon_top = mt
+        self._camera = _open_dxcam_for_monitor(mw, mh)
 
     def focus(self):
         wins = gw.getWindowsWithTitle(self.title)
         if wins:
             wins[0].activate()
             time.sleep(0.3)
+
+    def close(self):
+        if self._camera is not None:
+            try:
+                self._camera.stop()
+            except Exception:
+                pass
 
     @property
     def rect(self) -> dict:
@@ -69,9 +128,11 @@ class WindowCapture:
         return self._rect
 
     def capture(self) -> np.ndarray:
-        with mss.mss() as sct:
-            raw = sct.grab(self.rect)
-        return cv2.cvtColor(np.array(raw), cv2.COLOR_BGRA2BGR)
+        r = self.rect
+        frame = self._camera.get_latest_frame()
+        rl = r["left"] - self._mon_left
+        rt = r["top"] - self._mon_top
+        return frame[rt:rt + r["height"], rl:rl + r["width"]].copy()
 
     def rel_to_abs(self, rx: int, ry: int) -> tuple[int, int]:
         r = self.rect
@@ -542,6 +603,7 @@ class GameBot:
             print(f"\nBot error: {e}")
         finally:
             self.ctrl.release_all()
+            self.capture.close()
             print("All keys released.")
 
 
@@ -586,6 +648,7 @@ def main():
                 time.sleep(0.5)
             except KeyboardInterrupt:
                 break
+        cap.close()
         return
 
     with open(args.config) as f:
