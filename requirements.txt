@@ -5,4 +5,3 @@ mss
 pyautogui
 pygetwindow
 pywin32
-dxcam

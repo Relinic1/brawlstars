@@ -11,6 +11,7 @@ Failsafe: move the mouse to the top-left corner of the screen to abort.
 import argparse
 import json
 import sys
+import threading
 import time
 from enum import Enum, auto
 from pathlib import Path
@@ -22,17 +23,10 @@ import pygetwindow as gw
 
 try:
     import mss
-    import dxcam
+    import win32api
+    import win32con
 except ImportError:
     sys.exit("Install dependencies first: pip install -r requirements.txt")
-
-_dxcam_cameras: dict[int, object] = {}
-
-
-def _get_dxcam_camera(output_idx: int):
-    if output_idx not in _dxcam_cameras:
-        _dxcam_cameras[output_idx] = dxcam.create(output_idx=output_idx, output_color="BGR")
-    return _dxcam_cameras[output_idx]
 
 from ocr import _get_reader
 
@@ -54,22 +48,15 @@ class WindowCapture:
     def __init__(self, title: str):
         self.title = title
         self._rect = None
-        self._mon_info = None  # (output_idx, mon_left, mon_top)
+        self._hwnd = None
 
     def _find(self):
         wins = gw.getWindowsWithTitle(self.title)
         if not wins:
             raise RuntimeError(f"Window not found: '{self.title}'")
         w = wins[0]
-        w.activate()
-        time.sleep(0.3)
+        self._hwnd = w._hWnd
         self._rect = {"left": w.left, "top": w.top, "width": w.width, "height": w.height}
-
-    def focus(self):
-        wins = gw.getWindowsWithTitle(self.title)
-        if wins:
-            wins[0].activate()
-            time.sleep(0.3)
 
     @property
     def rect(self) -> dict:
@@ -77,36 +64,15 @@ class WindowCapture:
             self._find()
         return self._rect
 
-    def _monitor_info(self) -> tuple[int, int, int]:
-        if self._mon_info is None:
-            r = self.rect
-            cx = r["left"] + r["width"] // 2
-            cy = r["top"] + r["height"] // 2
-            with mss.mss() as sct:
-                for i, mon in enumerate(sct.monitors[1:]):
-                    if (mon["left"] <= cx < mon["left"] + mon["width"] and
-                            mon["top"] <= cy < mon["top"] + mon["height"]):
-                        self._mon_info = (i, mon["left"], mon["top"])
-                        break
-                else:
-                    self._mon_info = (0, 0, 0)
-        return self._mon_info
+    @property
+    def hwnd(self):
+        if self._hwnd is None:
+            self._find()
+        return self._hwnd
 
     def capture(self) -> np.ndarray:
-        r = self.rect
-        output_idx, mon_left, mon_top = self._monitor_info()
-        rl = r["left"] - mon_left
-        rt = r["top"] - mon_top
-        region = (rl, rt, rl + r["width"], rt + r["height"])
-        cam = _get_dxcam_camera(output_idx)
-        for _ in range(5):
-            frame = cam.grab(region=region)
-            if frame is not None:
-                return frame
-            time.sleep(0.016)
-        # fallback to mss
         with mss.mss() as sct:
-            raw = sct.grab(r)
+            raw = sct.grab(self.rect)
         return cv2.cvtColor(np.array(raw), cv2.COLOR_BGRA2BGR)
 
     def rel_to_abs(self, rx: int, ry: int) -> tuple[int, int]:
@@ -217,50 +183,119 @@ class StateDetector:
 # Input controller
 # ---------------------------------------------------------------------------
 
+_VK_MAP: dict[str, int] = {
+    "w": 0x57, "a": 0x41, "s": 0x53, "d": 0x44,
+    "shift": 0x10, "ctrl": 0x11, "alt": 0x12,
+    "space": 0x20, "enter": 0x0D, "esc": 0x1B,
+    "tab": 0x09, "back": 0x08,
+}
+
+
+def _vk(key: str) -> int:
+    k = key.lower()
+    if k in _VK_MAP:
+        return _VK_MAP[k]
+    if len(k) == 1:
+        return ord(k.upper())
+    raise ValueError(f"Unknown key: {key!r}")
+
+
+def _lp_keydown(vk: int, repeat: bool = False) -> int:
+    sc = win32api.MapVirtualKey(vk, 0)
+    return 1 | (sc << 16) | ((1 if repeat else 0) << 30)
+
+
+def _lp_keyup(vk: int) -> int:
+    sc = win32api.MapVirtualKey(vk, 0)
+    return 1 | (sc << 16) | (1 << 30) | (1 << 31)
+
+
+def _lp_mouse(cx: int, cy: int) -> int:
+    return (cx & 0xFFFF) | ((cy & 0xFFFF) << 16)
+
+
 class InputController:
     def __init__(self, capture: WindowCapture, dry_run: bool = False):
         self.capture = capture
         self.dry_run = dry_run
         self._held: set[str] = set()
+        self._stop_events: dict[str, threading.Event] = {}
+        self._threads: dict[str, threading.Thread] = {}
 
     def _log(self, msg: str):
         print(f"  [input] {msg}")
+
+    def _hwnd(self):
+        return self.capture.hwnd
 
     def hold(self, key: str):
         if key in self._held:
             return
         self._log(f"keyDown({key!r})")
-        if not self.dry_run:
-            pyautogui.keyDown(key)
         self._held.add(key)
+        if not self.dry_run:
+            hwnd = self._hwnd()
+            vk = _vk(key)
+            stop = threading.Event()
+            self._stop_events[key] = stop
+
+            def _loop(hwnd=hwnd, vk=vk, stop=stop):
+                first = True
+                while not stop.is_set():
+                    win32api.PostMessage(hwnd, win32con.WM_KEYDOWN, vk, _lp_keydown(vk, repeat=not first))
+                    first = False
+                    time.sleep(0.1)
+                win32api.PostMessage(hwnd, win32con.WM_KEYUP, vk, _lp_keyup(vk))
+
+            t = threading.Thread(target=_loop, daemon=True)
+            self._threads[key] = t
+            t.start()
 
     def release(self, key: str):
         if key not in self._held:
             return
         self._log(f"keyUp({key!r})")
-        if not self.dry_run:
-            pyautogui.keyUp(key)
         self._held.discard(key)
+        if not self.dry_run:
+            stop = self._stop_events.pop(key, None)
+            if stop:
+                stop.set()
+            t = self._threads.pop(key, None)
+            if t:
+                t.join(timeout=0.5)
 
     def press(self, key: str):
         self._log(f"press({key!r})")
         if not self.dry_run:
-            pyautogui.press(key)
+            hwnd = self._hwnd()
+            vk = _vk(key)
+            win32api.PostMessage(hwnd, win32con.WM_KEYDOWN, vk, _lp_keydown(vk))
+            time.sleep(0.05)
+            win32api.PostMessage(hwnd, win32con.WM_KEYUP, vk, _lp_keyup(vk))
 
     def release_all(self):
         for key in list(self._held):
             self.release(key)
 
+    def _post_click(self, cx: int, cy: int):
+        hwnd = self._hwnd()
+        lp = _lp_mouse(cx, cy)
+        win32api.PostMessage(hwnd, win32con.WM_LBUTTONDOWN, win32con.MK_LBUTTON, lp)
+        time.sleep(0.05)
+        win32api.PostMessage(hwnd, win32con.WM_LBUTTONUP, 0, lp)
+
     def click_rel(self, rx: int, ry: int):
         ax, ay = self.capture.rel_to_abs(rx, ry)
         self._log(f"click(abs={ax},{ay}  rel={rx},{ry})")
         if not self.dry_run:
-            pyautogui.click(ax, ay)
+            r = self.capture.rect
+            self._post_click(ax - r["left"], ay - r["top"])
 
     def click_abs(self, ax: int, ay: int):
         self._log(f"click(abs={ax},{ay})")
         if not self.dry_run:
-            pyautogui.click(ax, ay)
+            r = self.capture.rect
+            self._post_click(ax - r["left"], ay - r["top"])
 
     def click_center(self, img_center_xy: tuple, window_offset_xy: tuple):
         ax = window_offset_xy[0] + img_center_xy[0]
@@ -270,8 +305,21 @@ class InputController:
     def swipe(self, from_x: int, from_y: int, to_x: int, to_y: int, duration: float = 0.5):
         self._log(f"swipe({from_x},{from_y}) → ({to_x},{to_y})")
         if not self.dry_run:
-            pyautogui.moveTo(from_x, from_y)
-            pyautogui.dragTo(to_x, to_y, duration=duration, button="left")
+            hwnd = self._hwnd()
+            r = self.capture.rect
+            cx0 = from_x - r["left"]
+            cy0 = from_y - r["top"]
+            cx1 = to_x - r["left"]
+            cy1 = to_y - r["top"]
+            steps = max(20, int(duration * 60))
+            win32api.PostMessage(hwnd, win32con.WM_LBUTTONDOWN, win32con.MK_LBUTTON, _lp_mouse(cx0, cy0))
+            for i in range(steps + 1):
+                t = i / steps
+                cx = int(cx0 + (cx1 - cx0) * t)
+                cy = int(cy0 + (cy1 - cy0) * t)
+                win32api.PostMessage(hwnd, win32con.WM_MOUSEMOVE, win32con.MK_LBUTTON, _lp_mouse(cx, cy))
+                time.sleep(duration / steps)
+            win32api.PostMessage(hwnd, win32con.WM_LBUTTONUP, 0, _lp_mouse(cx1, cy1))
 
 
 # ---------------------------------------------------------------------------
@@ -513,9 +561,8 @@ class GameBot:
     # --- main loop ----------------------------------------------------------
 
     def run(self):
-        print("Bot started. Move mouse to top-left to abort (pyautogui failsafe).")
+        print("Bot started. Ctrl+C to stop.")
         print(f"Starting state: {self.state.name}")
-        self.capture.focus()
         try:
             while True:
                 if self.state == State.INITIAL_PLAY:
@@ -598,7 +645,6 @@ def main():
 
     if args.debug_pixel:
         cap = WindowCapture(cfg["window_title"])
-        cap.focus()
         print("Reading pixels every 0.5s — Ctrl+C to stop\n")
         while True:
             try:
