@@ -7,19 +7,19 @@
   "autoaim_interval_s": 0.3,
   "ocr_confidence": 0.4,
 
-  "home_button":           [-161, 984],
-  "gamemode_open_button":  [-910, 991],
-  "gamemode_swipe_from":   [-182, 561],
-  "gamemode_swipe_to":     [-1723, 562],
+  "home_button":           [-243, 951],
+  "gamemode_open_button":  [-910, 952],
+  "gamemode_swipe_from":   [-250, 540],
+  "gamemode_swipe_to":     [-1670, 540],
   "swipe_duration":        0.4,
   "duels_mode_button":     [-135, 782],
   "brawlball_mode_button": [-1595, 421],
-  "mode_play_button":      [-161, 984],
-  "brawler_select_button": [-1639, 980],
+  "mode_play_button":      [-243, 951],
+  "brawler_select_button": [-1629, 944],
 
-  "brawler_slot_duels":     [-980, 347],
-  "brawler_slot_brawlball": [-1484, 337],
+  "brawler_slot_duels":     [-1031, 377],
+  "brawler_slot_brawlball": [-1442, 366],
 
-  "duels_ingame_pixel":     [-381, 95, "black"],
-  "brawlball_ingame_pixel": [-1861, 60, "white"]
+  "duels_ingame_pixel":     [-440, 121, "black"],
+  "brawlball_ingame_pixel": [-1803, 89, "white"]
 }
